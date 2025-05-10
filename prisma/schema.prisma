@@ -1,0 +1,296 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  cases         Case[]
+  tasks         Task[]
+  notes         Note[]
+  documents     Document[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model PropertyOwner {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String?
+  phone              String?
+  preferredComMethod String   @default("EMAIL")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  cases              Case[]
+  notes              Note[]
+}
+
+model Tenant {
+  id         String   @id @default(cuid())
+  name       String
+  email      String?
+  phone      String?
+  leaseStart DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  cases      Case[]
+  notices    Notice[]
+}
+
+model Property {
+  id        String   @id @default(cuid())
+  address   String
+  city      String
+  state     String
+  zipCode   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cases     Case[]
+}
+
+enum LeadSource {
+  WEBSITE_FORM
+  PHONE_CALL
+  REFERRAL
+  AD_CAMPAIGN
+  OTHER
+}
+
+enum EvictionReason {
+  NON_PAYMENT
+  LEASE_VIOLATION
+  PROPERTY_DAMAGE
+  ILLEGAL_ACTIVITY
+  LEASE_EXPIRATION
+  OTHER
+}
+
+enum UrgencyLevel {
+  ASAP
+  WITHIN_7_DAYS
+  WITHIN_30_DAYS
+  NOT_URGENT
+}
+
+enum CaseStage {
+  NEW_LEAD
+  UNDER_REVIEW
+  NOTICE_SERVED
+  WAITING_PERIOD
+  COURT_FILING
+  HEARING_SCHEDULED
+  JUDGMENT
+  ENFORCEMENT
+  CASE_CLOSED
+}
+
+model Case {
+  id              String         @id @default(cuid())
+  caseNumber      String         @unique
+  leadSource      LeadSource
+  evictionReason  EvictionReason
+  urgencyLevel    UrgencyLevel
+  stage           CaseStage      @default(NEW_LEAD)
+  description     String?        @db.Text
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  propertyOwnerId String
+  propertyOwner   PropertyOwner  @relation(fields: [propertyOwnerId], references: [id])
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  propertyId      String
+  property        Property       @relation(fields: [propertyId], references: [id])
+  assignedToId    String?
+  assignedTo      User?          @relation(fields: [assignedToId], references: [id])
+  documents       Document[]
+  notices         Notice[]
+  tasks           Task[]
+  notes           Note[]
+  events          Event[]
+  payments        Payment[]
+}
+
+enum DocumentType {
+  LEASE_AGREEMENT
+  NOTICE
+  COURT_FILING
+  CORRESPONDENCE
+  OTHER
+}
+
+model Document {
+  id          String       @id @default(cuid())
+  name        String
+  type        DocumentType
+  url         String
+  uploadedAt  DateTime     @default(now())
+  caseId      String
+  case        Case         @relation(fields: [caseId], references: [id])
+  uploadedById String
+  uploadedBy  User         @relation(fields: [uploadedById], references: [id])
+  signatures  Signature[]
+}
+
+model Signature {
+  id         String   @id @default(cuid())
+  signedAt   DateTime @default(now())
+  signedBy   String
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+}
+
+enum NoticeType {
+  THREE_DAY
+  THIRTY_DAY
+  SIXTY_DAY
+  NINETY_DAY
+  OTHER
+}
+
+model Notice {
+  id        String     @id @default(cuid())
+  type      NoticeType
+  sentDate  DateTime
+  dueDate   DateTime
+  status    String
+  caseId    String
+  case      Case       @relation(fields: [caseId], references: [id])
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?      @db.Text
+  dueDate     DateTime?
+  priority    TaskPriority @default(MEDIUM)
+  completed   Boolean      @default(false)
+  caseId      String?
+  case        Case?        @relation(fields: [caseId], references: [id])
+  assignedToId String?
+  assignedTo  User?        @relation(fields: [assignedToId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Note {
+  id              String        @id @default(cuid())
+  content         String        @db.Text
+  caseId          String?
+  case            Case?         @relation(fields: [caseId], references: [id])
+  propertyOwnerId String?
+  propertyOwner   PropertyOwner? @relation(fields: [propertyOwnerId], references: [id])
+  createdById     String
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+enum EventType {
+  COURT_DATE
+  FILING_DEADLINE
+  NOTICE_DEADLINE
+  MEETING
+  OTHER
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  title       String
+  type        EventType
+  description String?   @db.Text
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  caseId      String?
+  case        Case?     @relation(fields: [caseId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  amount      Float
+  description String?
+  paymentDate DateTime
+  paymentMethod String
+  status      String
+  caseId      String
+  case        Case     @relation(fields: [caseId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Settings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
