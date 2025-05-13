@@ -1,59 +1,45 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { logger } from "@/lib/logger"
+import { logger } from "./lib/logger"
 
-// Middleware to handle request logging and error tracking
+// Middleware for global error handling and request logging
 export function middleware(request: NextRequest) {
-  // Skip logging for static assets
+  // Skip for static assets
   if (
     request.nextUrl.pathname.startsWith("/_next") ||
     request.nextUrl.pathname.startsWith("/static") ||
-    request.nextUrl.pathname.startsWith("/favicon.ico")
+    request.nextUrl.pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js)$/)
   ) {
     return NextResponse.next()
   }
 
-  // Log requests if enabled
-  if (process.env.LOG_REQUESTS === "true") {
-    const requestId = crypto.randomUUID()
-    const startTime = Date.now()
-
-    // Add request ID to headers for tracking
-    const requestHeaders = new Headers(request.headers)
-    requestHeaders.set("x-request-id", requestId)
-
-    // Log request
-    logger.info(`Request started: ${request.method} ${request.nextUrl.pathname}`, {
-      requestId,
-      method: request.method,
-      url: request.nextUrl.pathname,
-      query: Object.fromEntries(request.nextUrl.searchParams.entries()),
-      userAgent: request.headers.get("user-agent"),
-      referer: request.headers.get("referer"),
-      ip: request.ip || request.headers.get("x-forwarded-for"),
+  // Log incoming requests (in development or if explicitly enabled)
+  if (process.env.NODE_ENV === "development" || process.env.LOG_REQUESTS === "true") {
+    logger.info(`Request: ${request.method} ${request.nextUrl.pathname}`, {
+      headers: Object.fromEntries(request.headers),
+      query: Object.fromEntries(request.nextUrl.searchParams),
     })
-
-    // Continue with the request
-    const response = NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    })
-
-    // Add response headers for tracking
-    response.headers.set("x-request-id", requestId)
-
-    // Use a custom header to calculate response time
-    // This will be read by the middleware on the way back
-    response.headers.set("x-request-start-time", startTime.toString())
-
-    return response
   }
 
-  return NextResponse.next()
+  // Add security headers
+  const response = NextResponse.next()
+
+  // Security headers
+  response.headers.set("X-Content-Type-Options", "nosniff")
+  response.headers.set("X-Frame-Options", "DENY")
+  response.headers.set("X-XSS-Protection", "1; mode=block")
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+  // Content Security Policy (adjust as needed)
+  response.headers.set(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;",
+  )
+
+  return response
 }
 
-// Configure middleware to run on specific paths
+// Configure which paths the middleware runs on
 export const config = {
   matcher: [
     // Apply to all paths except static assets
